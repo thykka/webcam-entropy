@@ -9,6 +9,7 @@
   "author": "thykka",
   "license": "MIT",
   "dependencies": {
+    "image-pixels": "^2.2.2",
     "node-webcam": "^0.8.0"
   }
 }
