@@ -10,6 +10,7 @@
   "license": "MIT",
   "dependencies": {
     "image-pixels": "^2.2.2",
-    "node-webcam": "^0.8.0"
+    "node-webcam": "^0.8.0",
+    "random-seed": "^0.3.0"
   }
 }
