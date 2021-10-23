@@ -2,12 +2,19 @@
 const nodeWebcam = require('node-webcam');
 // https://github.com/dy/image-pixels
 const pixels = require('image-pixels');
+// https://www.npmjs.com/package/random-seed
+const gen = require('random-seed');
+const crypto = require('crypto');
+const fs = require('fs');
 
 const options = {
 	sourceWidth: 640,
 	sourceHeight: 480,
-	outWidth: 640,
-	outHeight: 480
+	outWidth: 640, // May be used to crop the output. Must not be larger than sourceWidth
+	outHeight: 480,
+	outFile: 'test.dat',
+	outBytesPerImage: 1, // how many bytes to generate from a single seed
+	append: true, // if false, will delete outFile before starting to write
 };
 
 const webcamOptions = {
@@ -16,7 +23,7 @@ const webcamOptions = {
 	quality: 100,
 	frames: 1,
 	delay: 0,
-	//saveShots: true,
+	saveShots: false,
 	output: 'png',
 	//device: false,
 	callbackReturn: 'base64'
@@ -25,62 +32,51 @@ const pixOptions = {
 	type: 'image/png',
 	//clip: [0,0,640,480],
 	clip: [
-		options.sourceWidth/2-options.outWidth/2,
+		options.sourceWidth /2-options.outWidth /2,
 		options.sourceHeight/2-options.outHeight/2,
-		options.sourceWidth/2+options.outWidth/2,
+		options.sourceWidth /2+options.outWidth /2,
 		options.sourceHeight/2+options.outHeight/2
 	].map(v => Math.round(v))
 };
 
 const cam = nodeWebcam.create(webcamOptions);
-
-const glyphs = '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\|()1{}[]?-_+~<>i!lI;:,"^`\'. '.split('').reverse();
+let imageData, hash, rndGen;
 
 async function processWebcamData(error, data) {
 	if(error) {
 		throw(error);
 	}
-	let imageData = await pixels(data,pixOptions);
-	if(imageData.data[0]!==0) { // ensure this isn't a blank frame
-		whiten(imageData.data)
+	imageData = await pixels(data,pixOptions); // TODO: fix memory leak
+	if(imageData && imageData.data[0]!==0) { // ensure this isn't a blank frame
+		writeRandom(imageData.data)
 	}
-	delete imageData;
-	setTimeout(()=>getEntropy(),1)
+	setTimeout(getEntropy,1)
 }
 
-const crypto = require('crypto');
-const fs = require('fs');
-fs.unlinkSync('test.dat');
-const stream = fs.createWriteStream('test.dat',{flags:'a'})
-const gen = require('random-seed');
 
-let hash, rndGen;
-
-function whiten(data) {
+function writeRandom(data) {
 	hash = crypto.createHash('blake2b512').update(data).digest('utf8');
 	rndGen = gen.create(hash);
-	for(let i=0;i<1024;i++){
-		stream.write(String.fromCharCode(rndGen(Number.MAX_SAFE_INTEGER)));
-	}
-}
-
-process.on('SIGINT', () => {
-	stream.end();
-	console.log('Wrote file.')
-	process.exit();
-})
-
-function displayAsciiImage(imageData) {
-	const g = [];
-	for(let i = 0,v; i<imageData.data.length; i+=4) {
-		v=imageData.data[i+1]||0;
-		g.push(glyphs[Math.floor(v/255*glyphs.length)])
-	}
-	console.log(g.join(''))
+	stream.write(
+		Buffer.from(Int8Array.from({length:options.outBytesPerImage},()=>rndGen(0x1fe)-0xff))
+	);
 }
 
 function getEntropy() {
 	cam.capture('test', processWebcamData);
 }
+
+if(!options.append) {
+	fs.unlinkSync(options.outFile);
+}
+const stream = fs.createWriteStream(options.outFile, {flags: 'a'})
+
+process.on('SIGINT', () => {
+	// attempt graceful exit
+	stream.end();
+	console.log('\nWrote file ' + options.outFile)
+	process.exit();
+})
+
 
 getEntropy();
